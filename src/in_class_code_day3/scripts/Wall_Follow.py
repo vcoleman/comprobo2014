@@ -39,14 +39,17 @@
 import rospy
 from geometry_msgs.msg import Twist, Vector3
 from sensor_msgs.msg import LaserScan
+import cv2
 
 distance_to_wall = -1
 target = 1.0
+pub = None
 
 def scan_received(msg):
+    """ Callback function for msg of type sensor_msgs/LaserScan """
     global distance_to_wall
     if len(msg.ranges) != 360:
-        print 'unexpcted laser scan message'
+        print 'unexpcted laser scan message, not correct length'
         return
 
     valid_msgs = 0.0
@@ -58,74 +61,30 @@ def scan_received(msg):
             print msg.ranges[i]
     if valid_msgs > 0:
         distance_to_wall = sum_valid / valid_msgs
+        pub.publish(Twist(linear=Vector3(x=.4*(distance_to_wall-target))))
     else:
         distance_to_wall = -1
 
-def getch():
-    """ Return the next character typed on the keyboard """
-    import sys, tty, termios
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(sys.stdin.fileno())
-        ch = sys.stdin.read(1)
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-    return ch
+def set_target_distance(new_distance):
+    """ call back function for the OpenCv Slider to set the target distance """
+    global target
+    target = new_distance/100.0
 
-def teleop(pub):
-    turn_vel = .4
-    linear_vel = 1
-    r = rospy.Rate(10)
-
-    while not(rospy.is_shutdown()):
-        if distance_to_wall < 0.5 and distance_to_wall > 0:
-            return "approach_wall"
-        c = getch()
-        if c == 'i':
-            pub.publish(Twist(linear=Vector3(x=linear_vel)))
-        elif c == 'u':
-            pub.publish(Twist(linear=Vector3(x=linear_vel),
-                              angular=Vector3(z=turn_vel)))
-        elif c == 'o':
-            pub.publish(Twist(linear=Vector3(x=linear_vel),
-                              angular=Vector3(z=-turn_vel)))
-        elif c == 'j':
-            pub.publish(Twist(angular=Vector3(z=turn_vel)))
-        elif c == 'l':
-            pub.publish(Twist(angular=Vector3(z=-turn_vel)))
-        elif c == 'm':
-            pub.publish(Twist(linear=Vector3(x=-linear_vel),
-                              angular=Vector3(z=-turn_vel)))
-        elif c == ',':
-            pub.publish(Twist(linear=Vector3(x=-linear_vel)))
-        elif c == '.':         
-            pub.publish(Twist(linear=Vector3(x=-linear_vel),
-                              angular=Vector3(z=turn_vel)))
-        elif c == 'q':
-            break
-        else:
-            pub.publish(Twist())
-        print distance_to_wall
-        r.sleep()
-
-def approach_wall(pub):
+def wall_withslider():
+    global pub
+    """ Main run loop for wall with slider """
+    cv2.namedWindow('UI')
+    cv2.createTrackbar('distance', 'UI', int(target*100), 300, set_target_distance)
+    rospy.init_node('approach_wall', anonymous=True)
+    pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
+    sub = rospy.Subscriber('scan', LaserScan, scan_received)
     r = rospy.Rate(10)
     while not(rospy.is_shutdown()):
-        if distance_to_wall != -1:
-            pub.publish(Twist(linear=Vector3(x=.4*(distance_to_wall-target))))
+        #if distance_to_wall != -1:
+        cv2.waitKey(10)
         r.sleep()
-
+        
 if __name__ == '__main__':
     try:
-        rospy.init_node('my_fsm', anonymous=True)
-        pub = rospy.Publisher('cmd_vel', Twist, queue_size=10)
-        sub = rospy.Subscriber('scan', LaserScan, scan_received)
-        state = "teleop"
-
-        while not rospy.is_shutdown():
-            if state == 'teleop':
-                state = teleop(pub)
-            elif state == 'approach_wall':
-                state = approach_wall(pub)
+        wall_withslider()
     except rospy.ROSInterruptException: pass
