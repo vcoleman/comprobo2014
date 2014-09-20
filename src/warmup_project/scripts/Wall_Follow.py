@@ -49,7 +49,7 @@ desired_angle = 90
 target = 1.0
 pub = None
 
-mode = "wall-follo"
+mode = "wall-follow"
 
 def scan_received(msg):
     """ Callback function for msg of type sensor_msgs/LaserScan """
@@ -57,10 +57,12 @@ def scan_received(msg):
     if len(msg.ranges) != 360:
         print 'unexpcted laser scan message, not correct length'
         return
-
-    if mode == "wall-follow":
+    print mode
+    if mode.strip() == "wall-follow\n":
         vel_cmd = wall_follow(msg)
-    else: vel_cmd = obstacle_avoid(msg)
+    if mode.strip() == "obstacle-avoid\n":
+        vel_cmd = obstacle_avoid(msg)
+    else: return
     pub.publish(vel_cmd)
 
 def wall_follow(msg):
@@ -74,8 +76,7 @@ def wall_follow(msg):
             valid_angles.append(i)
 
     if len(valid_distances) < 3:
-        print "wall_follow: no valid distances"
-        return Twist(angular=Vector3(z=0),linear=Vector3(x=0))
+        return Twist(angular=Vector3(z=0),linear=Vector3(x=.1))
 
     closest_object = min(valid_distances)
     closest_object_angle = valid_angles[valid_distances.index(closest_object)]
@@ -195,6 +196,11 @@ def wall_withslider():
     r = rospy.Rate(10)
     while not(rospy.is_shutdown()):
         #if distance_to_wall != -1:
+        mode = raw_input('Choose mode: wall-follow, teleop, or obstacle-avoid\n')
+        if mode =="teleop" or mode == "wall-follow" or mode == "obstacle-avoid":
+            print "current mode: " + mode + "\n"
+        else:
+            print "not valid mode, defaulting to teleop \n"
         cv2.waitKey(10)
         r.sleep()
 
